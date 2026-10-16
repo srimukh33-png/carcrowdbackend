@@ -23,6 +23,8 @@ public class CorsConfig {
 
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
             .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .map(s -> (s.startsWith("http://") || s.startsWith("https://") || "*".equals(s)) ? s : "https://" + s)
             .toList();
 
         config.setAllowedOriginPatterns(origins);
