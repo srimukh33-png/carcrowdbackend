@@ -6,7 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "car_brands")
+@Table(name = "car_brands", uniqueConstraints = {
+    @UniqueConstraint(name = "uk_car_brands_name", columnNames = {"name"})
+})
 public class CarBrand {
 
     @Id

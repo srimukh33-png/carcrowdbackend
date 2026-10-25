@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Optional;
 
 import com.carcrowd.entity.AdminUser;
 import com.carcrowd.entity.LeadActivity;
@@ -57,13 +58,7 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        log.info("Initializing CarCrowd database catalog and checking administrative account provisioning...");
-
-        // Remove previous catalog and activity records for clean dev seed if catalog is empty or being re-seeded
-        activityRepository.deleteAll();
-        interestRepository.deleteAll();
-        carRepository.deleteAll();
-        brandRepository.deleteAll();
+        log.info("Checking and synchronizing CarCrowd database catalog and administrative provisioning...");
 
         // Secure admin provisioning: do not wipe admin accounts; create initial admin only if not already present
         if (adminUserRepository.findByEmailIgnoreCase(initialAdminEmail).isEmpty()) {
@@ -284,14 +279,42 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private CarBrand seedBrand(String name) {
-        return brandRepository.save(new CarBrand(name, null, true));
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String normalizedName = name.trim();
+
+        // 1. Check if brand already exists (case-insensitively to prevent duplicates like "Tata" vs "tata")
+        Optional<CarBrand> existingBrand = brandRepository.findByNameIgnoreCase(normalizedName);
+        if (existingBrand.isPresent()) {
+            return existingBrand.get();
+        }
+
+        // 2. Extra guard with existsByName
+        if (brandRepository.existsByName(normalizedName)) {
+            return brandRepository.findByNameIgnoreCase(normalizedName).orElse(null);
+        }
+
+        // 3. Insert only missing brand, preserving the preferred display capitalization
+        return brandRepository.save(new CarBrand(normalizedName, null, true));
     }
 
     private void seedCar(CarBrand brand, String modelName, String bodyType, String fuelType,
                          String transmission, String seating, int initialSampleRegistrations) {
+        if (brand == null || modelName == null || modelName.isBlank()) {
+            return;
+        }
+        String normalizedModel = modelName.trim();
+
+        // Check if car model already exists for this brand to prevent duplicates on repeated runs
+        Optional<Car> existingCar = carRepository.findByBrandIdAndModelNameIgnoreCase(brand.getId(), normalizedModel);
+        if (existingCar.isPresent()) {
+            return;
+        }
+
         String description = String.format(
             "Experience the %s by %s. Join Bangalore car buyers negotiating volume collective pricing, corporate deals, and dealer benefits with authorized showrooms.",
-            modelName, brand.getName()
+            normalizedModel, brand.getName()
         );
 
         String imageUrl = String.format(
@@ -299,7 +322,7 @@ public class DataSeeder implements CommandLineRunner {
         );
 
         Car car = carRepository.save(new Car(
-            brand, modelName, imageUrl, bodyType, description, fuelType, transmission, seating, true
+            brand, normalizedModel, imageUrl, bodyType, description, fuelType, transmission, seating, true
         ));
 
         String[] cities = {"Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Pune", "Chennai"};

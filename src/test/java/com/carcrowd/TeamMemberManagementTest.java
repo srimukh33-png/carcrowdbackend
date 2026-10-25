@@ -292,6 +292,14 @@ public class TeamMemberManagementTest {
     @Test
     @WithMockUser(username = "admin@carcrowd.in", roles = "ADMIN")
     public void testCannotDeleteLastActiveAdmin() throws Exception {
+        // Ensure no other admin is active so adminUser is strictly the only active admin
+        adminUserRepository.findAll().stream()
+            .filter(u -> u.isAdmin() && !u.getId().equals(adminUser.getId()))
+            .forEach(u -> {
+                u.setActive(false);
+                adminUserRepository.save(u);
+            });
+
         mockMvc.perform(delete("/api/admin/members/" + adminUser.getId()))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message", containsString("administrator")));

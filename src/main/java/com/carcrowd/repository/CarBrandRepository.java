@@ -13,4 +13,8 @@ public interface CarBrandRepository extends JpaRepository<CarBrand, Long> {
     List<CarBrand> findAllByActiveTrueOrderByNameAsc();
 
     Optional<CarBrand> findByNameIgnoreCase(String name);
+
+    boolean existsByName(String name);
+
+    boolean existsByNameIgnoreCase(String name);
 }
