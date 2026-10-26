@@ -44,7 +44,7 @@ public class Car {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "car")
     private List<InterestRegistration> registrations = new ArrayList<>();
 
     public Car() {}
