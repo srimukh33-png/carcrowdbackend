@@ -241,7 +241,6 @@ public class DataSeeder implements CommandLineRunner {
         seedCar(audi, "Q5", "Mid-size Luxury SUV", "2.0L 45 TFSI quattro", "7-Speed S tronic", "5 Seater", 7);
         seedCar(audi, "Q7", "7-Seater Luxury SUV", "3.0L 55 TFSI quattro (340 hp)", "8-Speed Tiptronic", "7 Seater", 5);
         seedCar(audi, "Q8", "Flagship Luxury SUV Coupe", "3.0L 55 TFSI quattro", "8-Speed Tiptronic", "5 Seater", 4);
-        seedCar(audi, "e-tron GT", "Electric Performance GT", "All-Electric Dual Motor quattro (530 hp)", "2-Speed Automatic", "4 Seater", 3);
 
         // 17. Volvo
         CarBrand volvo = seedBrand("Volvo");
