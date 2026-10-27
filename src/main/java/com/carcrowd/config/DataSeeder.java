@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 import java.util.Optional;
 
 import com.carcrowd.entity.AdminUser;
@@ -73,6 +74,20 @@ public class DataSeeder implements CommandLineRunner {
         } else {
             log.info("Administrator account already verified for email: {}", initialAdminEmail);
         }
+
+        // 0. Automatically purge any deprecated or removed car models (such as e-tron GT) and their references
+        carRepository.findAll().stream()
+            .filter(c -> c.getModelName() != null && c.getModelName().toLowerCase().contains("e-tron"))
+            .forEach(car -> {
+                log.info("Purging deprecated car '{}' (ID={}) from database...", car.getModelName(), car.getId());
+                List<InterestRegistration> registrations = interestRepository.findAll((root, query, cb) -> cb.equal(root.get("car").get("id"), car.getId()));
+                for (InterestRegistration reg : registrations) {
+                    activityRepository.deleteAll(activityRepository.findByInterestRegistrationIdOrderByCreatedAtAsc(reg.getId()));
+                    interestRepository.delete(reg);
+                }
+                carRepository.delete(car);
+                log.info("Successfully deleted '{}' from database.", car.getModelName());
+            });
 
         // 1. Maruti Suzuki
         CarBrand maruti = seedBrand("Maruti Suzuki");
@@ -238,9 +253,13 @@ public class DataSeeder implements CommandLineRunner {
         seedCar(audi, "A4", "Premium Sports Sedan", "2.0L 40 TFSI (204 hp)", "7-Speed S tronic", "5 Seater", 7);
         seedCar(audi, "A6", "Executive Luxury Sedan", "2.0L 45 TFSI (245 hp)", "7-Speed S tronic", "5 Seater", 6);
         seedCar(audi, "Q3", "Compact Luxury SUV", "2.0L 40 TFSI quattro", "7-Speed S tronic", "5 Seater", 8);
+        seedCar(audi, "Q3 Sportback", "Compact Luxury SUV Coupe", "2.0L 40 TFSI quattro", "7-Speed S tronic", "5 Seater", 6);
         seedCar(audi, "Q5", "Mid-size Luxury SUV", "2.0L 45 TFSI quattro", "7-Speed S tronic", "5 Seater", 7);
         seedCar(audi, "Q7", "7-Seater Luxury SUV", "3.0L 55 TFSI quattro (340 hp)", "8-Speed Tiptronic", "7 Seater", 5);
         seedCar(audi, "Q8", "Flagship Luxury SUV Coupe", "3.0L 55 TFSI quattro", "8-Speed Tiptronic", "5 Seater", 4);
+        seedCar(audi, "RS Q8", "High-Performance Luxury SUV", "4.0L Twin-Turbo V8 (600 hp)", "8-Speed Tiptronic", "5 Seater", 4);
+        seedCar(audi, "S5 Sportback", "Performance 4-Door Coupe", "3.0L TFSI V6 quattro (354 hp)", "8-Speed Tiptronic", "5 Seater", 5);
+        seedCar(audi, "SQ8", "Performance Luxury SUV", "4.0L Twin-Turbo V8", "8-Speed Tiptronic", "5 Seater", 3);
 
         // 17. Volvo
         CarBrand volvo = seedBrand("Volvo");
@@ -304,20 +323,23 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
         String normalizedModel = modelName.trim();
+        String imageUrl = resolveLocalCarImageUrl(brand.getName(), normalizedModel);
 
         // Check if car model already exists for this brand to prevent duplicates on repeated runs
         Optional<Car> existingCar = carRepository.findByBrandIdAndModelNameIgnoreCase(brand.getId(), normalizedModel);
         if (existingCar.isPresent()) {
+            Car car = existingCar.get();
+            // Automatically update legacy Unsplash URLs to the high-resolution local AVIF assets
+            if (car.getImageUrl() == null || car.getImageUrl().contains("unsplash.com")) {
+                car.setImageUrl(imageUrl);
+                carRepository.save(car);
+            }
             return;
         }
 
         String description = String.format(
             "Experience the %s by %s. Join Bangalore car buyers negotiating volume collective pricing, corporate deals, and dealer benefits with authorized showrooms.",
             normalizedModel, brand.getName()
-        );
-
-        String imageUrl = String.format(
-            "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80"
         );
 
         Car car = carRepository.save(new Car(
@@ -391,6 +413,35 @@ public class DataSeeder implements CommandLineRunner {
                             : (status == LeadStatus.CANCELLED ? "Customer declined to proceed. Request marked CANCELLED." : "Team contacted customer to verify interest."))
                 ));
             }
+        }
+    }
+
+    private String resolveLocalCarImageUrl(String brandName, String modelName) {
+        String brand = brandName.trim().toLowerCase();
+        String model = modelName.trim().toLowerCase();
+
+        if (model.startsWith(brand)) {
+            model = model.substring(brand.length()).trim();
+        }
+
+        if (brand.equals("land rover")) {
+            if (model.startsWith("defender")) return "/cars/defender.avif";
+            if (model.startsWith("range rover")) {
+                return "/cars/" + model.replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "") + ".avif";
+            }
+        }
+        String combined = (brand + "-" + model).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        switch (combined) {
+            case "citroen-aircross": return "/cars/citroen-aircross-x.avif";
+            case "citroen-basalt": return "/cars/citroen-basalt-x.avif";
+            case "citroen-c3": return "/cars/citroen-c3-x.avif";
+            case "citroen-ec3": return "/cars/citroen-e-c3-x.avif";
+            case "mahindra-be-6": return "/cars/mahindra-be-6-sporteq.avif";
+            case "mahindra-thar": return "/cars/mahindra-thar-og.avif";
+            case "mahindra-scorpio-classic": return "/cars/mahindra-scorpio.avif";
+            case "mahindra-xuv700": return "/cars/mahindra-xuv-7xo.avif";
+            case "tata-tigor": return "/cars/tata-tigor-ev.avif";
+            default: return "/cars/" + combined + ".avif";
         }
     }
 }

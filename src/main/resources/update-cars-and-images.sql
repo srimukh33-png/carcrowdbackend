@@ -1,5 +1,8 @@
 -- CarCrowd Comprehensive Car and Image Update Script
 START TRANSACTION;
+DELETE la FROM lead_activities la JOIN interest_registrations ir ON la.interest_registration_id = ir.id JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%';
+DELETE ir FROM interest_registrations ir JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%';
+DELETE FROM cars WHERE LOWER(model_name) LIKE '%e-tron%';
 UPDATE cars SET image_url = '/cars/audi-a4.avif' WHERE id = 115;
 UPDATE cars SET image_url = '/cars/audi-a6.avif' WHERE id = 116;
 INSERT INTO cars (brand_id, model_name, image_url, body_type, description, fuel_type, transmission, seating, active, created_at)

@@ -24,9 +24,16 @@ import java.util.Map;
 public class AdminCarController {
 
     private final AdminCarService adminCarService;
+    private final com.carcrowd.config.DatabaseCarCatalogInitializer catalogInitializer;
 
-    public AdminCarController(AdminCarService adminCarService) {
+    public AdminCarController(AdminCarService adminCarService, com.carcrowd.config.DatabaseCarCatalogInitializer catalogInitializer) {
         this.adminCarService = adminCarService;
+        this.catalogInitializer = catalogInitializer;
+    }
+
+    @PostMapping("/cars/sync-catalog")
+    public ResponseEntity<Map<String, Object>> syncCatalog() {
+        return ResponseEntity.ok(catalogInitializer.syncCatalogue());
     }
 
     private String requireAdminEmail(Authentication authentication) {
