@@ -43,6 +43,9 @@ public class DataSeeder implements CommandLineRunner {
     @org.springframework.beans.factory.annotation.Value("${app.admin.initial-name:CarCrowd Operations Admin}")
     private String initialAdminName;
 
+    @org.springframework.beans.factory.annotation.Value("${app.seed.force:false}")
+    private boolean forceSeed;
+
     public DataSeeder(CarBrandRepository brandRepository,
                       CarRepository carRepository,
                       InterestRegistrationRepository interestRepository,
@@ -83,9 +86,14 @@ public class DataSeeder implements CommandLineRunner {
             jdbcTemplate.execute("DELETE la FROM lead_activities la JOIN interest_registrations ir ON la.interest_registration_id = ir.id JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%'");
             jdbcTemplate.execute("DELETE ir FROM interest_registrations ir JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%'");
             jdbcTemplate.execute("DELETE FROM cars WHERE LOWER(model_name) LIKE '%e-tron%'");
-            log.info("Successfully purged deprecated e-tron GT from database.");
-        } catch (Exception e) {
-            log.warn("Notice during e-tron purge: {}", e.getMessage());
+        } catch (Exception ignored) {
+        }
+
+        // Check if database is already populated with cars to preserve administrator deletions and edits
+        long existingCarCount = carRepository.count();
+        if (existingCarCount > 0 && !forceSeed) {
+            log.info("Database is already initialized with {} vehicle models. Skipping DataSeeder to respect administrator additions, edits, and deletions.", existingCarCount);
+            return;
         }
 
         // 1. Maruti Suzuki

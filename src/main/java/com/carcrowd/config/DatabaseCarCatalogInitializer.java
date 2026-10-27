@@ -22,15 +22,22 @@ public class DatabaseCarCatalogInitializer implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(DatabaseCarCatalogInitializer.class);
 
     private final DataSource dataSource;
+    private final com.carcrowd.repository.CarRepository carRepository;
 
-    public DatabaseCarCatalogInitializer(DataSource dataSource) {
+    public DatabaseCarCatalogInitializer(DataSource dataSource, com.carcrowd.repository.CarRepository carRepository) {
         this.dataSource = dataSource;
+        this.carRepository = carRepository;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        log.info("Starting automatic vehicle catalogue synchronization from update-cars-and-images.sql...");
-        syncCatalogue();
+        long count = carRepository.count();
+        if (count == 0) {
+            log.info("Database contains 0 vehicle records. Running initial vehicle catalogue population from update-cars-and-images.sql...");
+            syncCatalogue();
+        } else {
+            log.info("Database already initialized with {} vehicle models. Skipping startup SQL script to preserve administrator deletions and additions.", count);
+        }
     }
 
     public java.util.Map<String, Object> syncCatalogue() {
