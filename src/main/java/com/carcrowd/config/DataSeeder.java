@@ -32,6 +32,7 @@ public class DataSeeder implements CommandLineRunner {
     private final AdminUserRepository adminUserRepository;
     private final LeadActivityRepository activityRepository;
     private final PasswordEncoder passwordEncoder;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @org.springframework.beans.factory.annotation.Value("${app.admin.initial-email:admin@carcrowd.in}")
     private String initialAdminEmail;
@@ -47,13 +48,15 @@ public class DataSeeder implements CommandLineRunner {
                       InterestRegistrationRepository interestRepository,
                       AdminUserRepository adminUserRepository,
                       LeadActivityRepository activityRepository,
-                      PasswordEncoder passwordEncoder) {
+                      PasswordEncoder passwordEncoder,
+                      org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.brandRepository = brandRepository;
         this.carRepository = carRepository;
         this.interestRepository = interestRepository;
         this.adminUserRepository = adminUserRepository;
         this.activityRepository = activityRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -75,19 +78,15 @@ public class DataSeeder implements CommandLineRunner {
             log.info("Administrator account already verified for email: {}", initialAdminEmail);
         }
 
-        // 0. Automatically purge any deprecated or removed car models (such as e-tron GT) and their references
-        carRepository.findAll().stream()
-            .filter(c -> c.getModelName() != null && c.getModelName().toLowerCase().contains("e-tron"))
-            .forEach(car -> {
-                log.info("Purging deprecated car '{}' (ID={}) from database...", car.getModelName(), car.getId());
-                List<InterestRegistration> registrations = interestRepository.findAll((root, query, cb) -> cb.equal(root.get("car").get("id"), car.getId()));
-                for (InterestRegistration reg : registrations) {
-                    activityRepository.deleteAll(activityRepository.findByInterestRegistrationIdOrderByCreatedAtAsc(reg.getId()));
-                    interestRepository.delete(reg);
-                }
-                carRepository.delete(car);
-                log.info("Successfully deleted '{}' from database.", car.getModelName());
-            });
+        // 0. Automatically purge any deprecated or removed car models (such as e-tron GT) and their references using native SQL
+        try {
+            jdbcTemplate.execute("DELETE la FROM lead_activities la JOIN interest_registrations ir ON la.interest_registration_id = ir.id JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%'");
+            jdbcTemplate.execute("DELETE ir FROM interest_registrations ir JOIN cars c ON ir.car_id = c.id WHERE LOWER(c.model_name) LIKE '%e-tron%'");
+            jdbcTemplate.execute("DELETE FROM cars WHERE LOWER(model_name) LIKE '%e-tron%'");
+            log.info("Successfully purged deprecated e-tron GT from database.");
+        } catch (Exception e) {
+            log.warn("Notice during e-tron purge: {}", e.getMessage());
+        }
 
         // 1. Maruti Suzuki
         CarBrand maruti = seedBrand("Maruti Suzuki");
@@ -342,78 +341,9 @@ public class DataSeeder implements CommandLineRunner {
             normalizedModel, brand.getName()
         );
 
-        Car car = carRepository.save(new Car(
+        carRepository.save(new Car(
             brand, normalizedModel, imageUrl, bodyType, description, fuelType, transmission, seating, true
         ));
-
-        String[] cities = {"Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Pune", "Chennai"};
-        String[] timelines = {"Within 30 days", "1–3 months", "Immediate (< 15 days)", "> 3 months"};
-        String[] firstNames = {"Aarav", "Priya", "Rohan", "Sneha", "Vikram", "Ananya", "Karthik", "Pooja", "Deepak", "Neha", "Siddharth", "Tanvi", "Aditya", "Meera"};
-        String[] lastNames = {"Sharma", "Patel", "Mehta", "Iyer", "Malhotra", "Roy", "Raman", "Reddy", "Joshi", "Verma", "Nair", "Desai", "Kulkarni", "Sen"};
-        LeadStatus[] statuses = {LeadStatus.JOINED, LeadStatus.CONTACTED, LeadStatus.WAITING, LeadStatus.BOUGHT, LeadStatus.CANCELLED};
-
-        // Seed sample registrations to reflect initial collective group interest
-        for (int i = 1; i <= initialSampleRegistrations; i++) {
-            String samplePhone = String.format("98%02d%02d%04d", brand.getId() % 100, (car.getId() != null ? car.getId() % 100 : 1), i);
-            String sampleEmail = String.format("buyer.b%d.c%d.u%d@carcrowd.in", brand.getId(), car.getId() != null ? car.getId() : 1, i);
-            String name = firstNames[(i + (int)(car.getId() != null ? car.getId() : 1)) % firstNames.length] + " " +
-                          lastNames[(i * 3) % lastNames.length];
-            String city = cities[(i + (int)(car.getId() != null ? car.getId() : 1)) % cities.length];
-            String timeline = timelines[i % timelines.length];
-            LeadStatus status = statuses[i % statuses.length];
-
-            InterestRegistration reg = new InterestRegistration(
-                car,
-                name,
-                samplePhone,
-                sampleEmail,
-                25 + ((i * 7) % 35),
-                city,
-                timeline,
-                true
-            );
-            reg.setLeadStatus(status);
-
-            if (status != LeadStatus.JOINED) {
-                reg.setLastContactedAt(java.time.LocalDateTime.now().minusDays(i % 5));
-                reg.setNextFollowUpDate(java.time.LocalDate.now().plusDays((i % 7) + 1));
-                reg.setInternalNotes(status == LeadStatus.BOUGHT
-                    ? "Customer completed purchase and bought the vehicle with group savings."
-                    : (status == LeadStatus.WAITING
-                        ? "Customer confirmed interest in group deal. Waiting for dealership quota."
-                        : (status == LeadStatus.CANCELLED ? "Customer postponed purchase plans." : "Followed up regarding color and delivery timeline.")));
-            }
-
-            InterestRegistration savedReg = interestRepository.save(reg);
-
-            // 1. Initial creation timeline event
-            activityRepository.save(new LeadActivity(
-                savedReg.getId(),
-                null,
-                null,
-                "REQUEST_CREATED",
-                null,
-                "JOINED",
-                "Request submitted. Customer joined group for " + car.getModelName()
-            ));
-
-            // 2. Subsequent status change timeline event if progressed
-            if (status != LeadStatus.JOINED) {
-                activityRepository.save(new LeadActivity(
-                    savedReg.getId(),
-                    "admin@carcrowd.in",
-                    "CarCrowd Operations Admin",
-                    "STATUS_CHANGE",
-                    "JOINED",
-                    status.name(),
-                    status == LeadStatus.BOUGHT
-                        ? "Deal completed successfully! Customer purchased car with group discount."
-                        : (status == LeadStatus.WAITING
-                            ? "Interest confirmed via phone call. Moved to WAITING."
-                            : (status == LeadStatus.CANCELLED ? "Customer declined to proceed. Request marked CANCELLED." : "Team contacted customer to verify interest."))
-                ));
-            }
-        }
     }
 
     private String resolveLocalCarImageUrl(String brandName, String modelName) {
